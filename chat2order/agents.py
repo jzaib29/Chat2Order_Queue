@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -32,6 +33,47 @@ class ProviderFailure(RuntimeError):
 
 class BudgetExceeded(RuntimeError):
     pass
+
+
+def provider_error_message(exc: APIStatusError, model_id: str, api_key: str = "") -> str:
+    """Keep useful provider diagnostics, never credentials, headers, or HTML."""
+    def safe(value, limit=500):
+        value = str(value)
+        if api_key:
+            value = value.replace(api_key, "[redacted]")
+        value = re.sub(r"\bgsk_[A-Za-z0-9_-]+", "[redacted]", value)
+        value = re.sub(r"(?i)\bBearer\s+\S+", "Bearer [redacted]", value)
+        return re.sub(r"\s+", " ", value).strip()[:limit]
+
+    body = exc.body
+    error = body.get("error", body) if isinstance(body, dict) else None
+    code = error.get("code", "") if isinstance(error, dict) else ""
+    message = error.get("message", "") if isinstance(error, dict) else ""
+    code = safe(code, 80) if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", code) else ""
+    message = safe(message) if isinstance(message, str) else ""
+    model = safe(model_id, 100)
+    status = exc.status_code
+    prefixes = {
+        401: "Groq could not authenticate this request (HTTP 401). Check GROQ_API_KEY in Streamlit secrets.",
+        403: f"Groq denied the request (HTTP 403) for model '{model}'.",
+        400: f"Groq rejected the request (HTTP 400) for model '{model}'.",
+        404: f"Groq could not find the requested resource (HTTP 404) for model '{model}'.",
+        429: "Groq rejected the request due to a usage or rate limit (HTTP 429).",
+    }
+    parts = [prefixes.get(status, f"Groq returned HTTP {status} for model '{model}'.")]
+    if code:
+        parts.append(f"Provider code: {code}.")
+    if message:
+        parts.append("Provider message: " + message)
+    if status == 403:
+        if code == "model_permission_blocked_org":
+            parts.append("Allow this model in Groq Settings > Organization > Limits. A project cannot override an organization block.")
+        elif code == "model_permission_blocked_project":
+            parts.append("Allow this model in Groq Settings > Projects > Limits for the project that issued this API key.")
+        else:
+            parts.append("Check Groq organization and project model permissions. HTTP 403 alone does not identify the exact restriction.")
+    parts.append("Your order board is preserved. No automatic retry was made.")
+    return " ".join(parts)
 
 
 @dataclass
@@ -136,8 +178,7 @@ class BoundedGroqLLM(BaseLLM):
         except APIConnectionError:
             raise ProviderFailure("Could not connect to Groq. Your previous order board is preserved.") from None
         except APIStatusError as exc:
-            messages_by_status = {401: "Groq rejected the API key. Check the deployment secret.", 403: "This Groq account cannot access the selected model.", 429: "Groq's rate limit was reached. No automatic retry was made; wait and retry manually.", 400: "Groq rejected the request or output schema. Check the selected model and reduce the batch if necessary."}
-            raise ProviderFailure(messages_by_status.get(exc.status_code, f"Groq returned HTTP {exc.status_code}. Your previous order board is preserved.")) from None
+            raise ProviderFailure(provider_error_message(exc, self.model, getattr(self._client, "api_key", ""))) from None
         if completion.usage:
             inp, out = completion.usage.prompt_tokens, completion.usage.completion_tokens
             self._metrics.update(input_tokens=inp, output_tokens=out)
