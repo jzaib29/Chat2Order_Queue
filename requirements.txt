@@ -1,0 +1,5 @@
+# Verified for Python 3.12 / Linux on 2026-09-30.
+# The lock file pins the successfully resolved transitive dependency set.
+# Direct versions: Streamlit 1.64.0, CrewAI 1.15.23, Groq 1.7.0,
+# Pydantic 2.12.5 (CrewAI requires Pydantic <2.13).
+-r requirements.lock.txt

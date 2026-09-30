@@ -1,0 +1,15 @@
+{
+  "name": "Sunday & Sugar",
+  "currency": "PKR",
+  "timezone": "Asia/Karachi",
+  "lead_hours": 12,
+  "pickup_start": "10:00",
+  "pickup_end": "18:00",
+  "products": [
+    {"id":"CC","name":"Chocolate cupcakes","price":180,"daily_capacity":8,"aliases":["chocolate cupcakes","chocolate cupcake","choc cupcakes","choc cupcake"]},
+    {"id":"VC","name":"Vanilla cupcakes","price":160,"daily_capacity":16,"aliases":["vanilla cupcakes","vanilla cupcake"]},
+    {"id":"BR","name":"Brownies","price":220,"daily_capacity":12,"aliases":["brownies","brownie"]},
+    {"id":"CK","name":"Cookies","price":100,"daily_capacity":20,"aliases":["cookies","cookie"]}
+  ],
+  "policy_text": "[P1] Order details\nEach order needs a catalog product, positive whole-number quantity, pickup date, and pickup time. Missing details must be clarified.\n\n[P2] Pickup and lead time\nUse the configured pickup window and minimum lead time. Do not promise a pickup outside these rules.\n\n[P3] Capacity\nDaily production capacity is a limit for each product and date. Existing approved orders reserve capacity. Pending requests do not reserve capacity.\n\n[P4] Substitutions\nAn alternative product may be offered only if capacity permits. The customer must explicitly agree before changing products.\n\n[P5] Approval and changes\nA draft response is not an order confirmation. The owner approves orders after a fresh capacity check. A change to an approved order keeps its original reservation until the owner approves the replacement.\n\n[P6] Cancellation\nCancellation of an approved order requires owner review. Release reserved capacity only when the cancellation is recorded."
+}
