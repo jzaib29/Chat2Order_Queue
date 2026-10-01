@@ -53,7 +53,7 @@ def shared_store(path):
 
 
 store = shared_store(secret("CHAT2ORDER_DB_PATH", str(ROOT / "runtime/orders.sqlite3")))
-for key, value in {"nav": "User Interface", "customer_name": "Ayesha", "agent_cache": {}, "session_calls": 0, "session_tokens": 0, "draft_id": "CO-" + uuid4().hex[:12].upper(), "attempt_times": {}, "advice_cache": {}, "last_traces": [], "notice": None}.items():
+for key, value in {"nav": "User Interface", "customer_profile": st.session_state.get("customer_name", "Ayesha"), "agent_cache": {}, "session_calls": 0, "session_tokens": 0, "draft_id": "CO-" + uuid4().hex[:12].upper(), "attempt_times": {}, "advice_cache": {}, "last_traces": [], "notice": None}.items():
     if key not in st.session_state:
         st.session_state[key] = value
 if st.session_state.pop("reset_clear_confirmation", False):
@@ -174,7 +174,7 @@ def run_ai(order_id, fn, **kwargs):
 
 
 def submit_text(text, order=None):
-    customer = " ".join(st.session_state.customer_name.split())
+    customer = " ".join(st.session_state.customer_profile.split())
     if not customer or not text.strip():
         raise ValueError("Enter your name and an order message.")
     order_id = order.id if order else st.session_state.draft_id
@@ -199,6 +199,11 @@ def submit_text(text, order=None):
 def example_text():
     target = local_now(business).date() + timedelta(days=3)
     st.session_state.order_text = f"I'd like 4 brownies for {target.isoformat()} at 14:00, pickup please."
+
+
+def remember_customer():
+    # Keep the profile outside widget state, which is cleared on other views.
+    st.session_state.customer_profile = st.session_state._customer_name
 
 
 def load_samples():
@@ -242,7 +247,7 @@ def heartbeat():
     fresh = store.snapshot(False)
     if fresh["revision"] != st.session_state.render_revision:
         st.rerun()
-    relevant = [o for o in fresh["orders"] if o.status == "ready_for_pickup" and o.fulfill_due_at and (page != "User Interface" or o.customer_key == customer_key(st.session_state.customer_name))]
+    relevant = [o for o in fresh["orders"] if o.status == "ready_for_pickup" and o.fulfill_due_at and (page != "User Interface" or o.customer_key == customer_key(st.session_state.customer_profile))]
     if relevant and page in {"User Interface", "Business Interface"}:
         now = utc_now()
         text = " · ".join(f"{o.id}: {max(0, int((datetime.fromisoformat(o.fulfill_due_at) - now).total_seconds()) + 1)}s" for o in relevant[:4])
@@ -256,9 +261,11 @@ heartbeat()
 
 def user_interface():
     hero("Your next good order", 'Say it naturally.<br>Follow it <span>clearly.</span>', "Tell us what you would like. Review any suggested changes, follow the business response, and accept pickup when your order is ready.", [("1", "Write your order", "A simple message is enough"), ("2", "Stay in the loop", "Every decision, visible"), ("✓", "Accept pickup", "A clear finish to every order")])
-    st.text_input("Customer name", key="customer_name", max_chars=80, help="Demo identity: use the same name to follow your orders. No account signup is required.")
-    mine = [o for o in active if o.customer_key == customer_key(st.session_state.customer_name)]
+    mine = [o for o in active if o.customer_key == customer_key(st.session_state.customer_profile)]
     metrics([("Your active orders", len(mine), "Current requests"), ("Awaiting a decision", sum(o.status in {"placed", "modified"} for o in mine), "Business or customer review"), ("Ready for pickup", sum(o.status == "ready_for_pickup" for o in mine), "Accept pickup below")])
+    if "_customer_name" not in st.session_state:
+        st.session_state._customer_name = st.session_state.customer_profile
+    st.text_input("Customer name", key="_customer_name", on_change=remember_customer, max_chars=80, help="Demo identity: use the same name to follow your orders. Your selected name stays selected when switching views.")
     left, right = st.columns([1, 1.35], gap="large")
     with left:
         section("Place an order", "One menu product per order")
@@ -280,7 +287,7 @@ def user_interface():
         st.caption(f"Pickup {business.pickup_start}–{business.pickup_end} · {business.lead_hours} hours minimum lead time.")
     with right:
         section("Your order board", "Updates appear here automatically")
-        my_ids = {o.id for o in orders if o.customer_key == customer_key(st.session_state.customer_name)}
+        my_ids = {o.id for o in orders if o.customer_key == customer_key(st.session_state.customer_profile)}
         terminal_updates = [e for e in events if e.order_id in my_ids and e.status in TERMINAL]
         if terminal_updates:
             last = terminal_updates[-1]
@@ -290,32 +297,36 @@ def user_interface():
         for o in reversed(mine):
             with st.container(border=True):
                 card(o)
-                if o.status in {"needs_clarification", "placed"}:
+                if o.status != "ready_for_pickup":
                     with st.expander("Complete or update details · no AI request", expanded=o.status == "needs_clarification"):
+                        if o.reservation:
+                            st.caption("Changes to an accepted order go to the business for approval. Your confirmed order stays reserved until approval.")
+                        elif o.status == "modified":
+                            st.caption("Sending your own details replaces the pending business proposal and sends your order back for review.")
                         with st.form("customer_fields_" + o.id + str(o.version)):
-                            details = details_inputs(o.details, "cf_" + o.id + str(o.version), allow_empty=True)
+                            details = details_inputs(o.proposal or o.details, "cf_" + o.id + str(o.version), allow_empty=True)
                             confirmed = st.checkbox("These details confirm my standard pickup order.")
                             save = st.form_submit_button("Send these details", width="stretch")
                         if save:
                             if not confirmed:
                                 st.error("Confirm the standard pickup details before sending them.")
                             else:
-                                act(store.update_details, o.id, o.version, st.session_state.customer_name, details, success="Details updated. The business can review your order.")
+                                act(store.update_details, o.id, o.version, st.session_state.customer_profile, details, success="Details sent. The business can review your update.")
                 if o.status == "modified" and o.proposed_by == "business":
                     c1, c2 = st.columns(2)
                     if c1.button("Accept modification", key="accept_prop_" + o.id, type="primary", width="stretch"):
-                        act(store.customer_action, o.id, o.version, st.session_state.customer_name, "accept_proposal", success="Modification accepted. Your revised order is confirmed.")
+                        act(store.customer_action, o.id, o.version, st.session_state.customer_profile, "accept_proposal", success="Modification accepted. Your revised order is confirmed.")
                     if c2.button("Decline modification", key="decline_prop_" + o.id, width="stretch"):
-                        act(store.customer_action, o.id, o.version, st.session_state.customer_name, "decline_proposal", success="Modification declined. The business will see your response.")
+                        act(store.customer_action, o.id, o.version, st.session_state.customer_profile, "decline_proposal", success="Modification declined. The business will see your response.")
                 if o.status == "ready_for_pickup" and not o.pickup_accepted_at:
                     if st.button("Accept pickup ✓", key="pickup_" + o.id, type="primary", width="stretch"):
-                        act(store.customer_action, o.id, o.version, st.session_state.customer_name, "pickup", success="Pickup accepted. The completion countdown has started.")
-                if o.status in {"needs_clarification", "placed", "accepted"} or (o.status == "modified" and o.proposed_by == "customer"):
+                        act(store.customer_action, o.id, o.version, st.session_state.customer_profile, "pickup", success="Pickup accepted. The completion countdown has started.")
+                if o.status != "ready_for_pickup":
                     with st.expander("Send a message or request a change"):
                         with st.form("followup_" + o.id + str(o.version)):
                             update = st.text_area("Your message", max_chars=3000, key="follow_text_" + o.id + str(o.version), placeholder="My pickup time is 15:00.")
                             send = st.form_submit_button("Send message", disabled=not api_key)
-                        st.caption("An accepted order keeps its original reservation while the business reviews your change.")
+                        st.caption("A message uses the Order Interpreter. Use the detail fields above for updates without AI. Accepted orders keep their reservation while the business reviews a change.")
                         if send:
                             act(submit_text, update, o, success=lambda changed: f"Message processed · {STATUS_LABELS[changed.status]}.")
                 with st.expander("Order activity"):
