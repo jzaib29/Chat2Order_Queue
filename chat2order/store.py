@@ -135,8 +135,6 @@ class Store:
                 raise ValueError("Choose the customer who placed this order.")
             if o.status in TERMINAL or o.status == "ready_for_pickup":
                 raise ValueError("This order can no longer be edited here.")
-            if o.status == "modified" and o.proposed_by == "business":
-                raise ValueError("Accept or decline the business proposal using its buttons.")
             o.messages.append(ChatMessage(text=text.strip(), at=stamp(clock)))
             if result.intent == "ignore":
                 return "Customer message acknowledged; order details unchanged."
@@ -168,12 +166,24 @@ class Store:
 
     def update_details(self, order_id, version, customer, details: Details, now=None):
         def mutate(o, b, orders, clock):
-            if o.customer_key != customer_key(customer) or o.status not in {"needs_clarification", "placed"}:
-                raise ValueError("Only the requesting customer can complete an order awaiting review.")
-            o.details = details
-            o.question = self._question(details, b, clock)
-            o.status = "needs_clarification" if o.question else "placed"
-            return "Customer confirmed standard pickup details: " + describe(details, b)
+            if o.customer_key != customer_key(customer):
+                raise ValueError("Choose the customer who placed this order.")
+            if o.status in TERMINAL or o.status == "ready_for_pickup":
+                raise ValueError("This order can no longer be edited. Ready orders can only be picked up.")
+            replaced_proposal = o.status == "modified"
+            question = self._question(details, b, clock)
+            if o.reservation:
+                # Preserve the confirmed details and stock until owner approval.
+                o.previous_status = "accepted"
+                o.status, o.proposed_by = "modified", "customer"
+                o.proposal = details.model_copy(deep=True)
+                o.proposal_note = question or "Customer confirmed revised pickup details. Business approval is required."
+                o.cancellation_requested, o.question = False, question
+            else:
+                o.details, o.question = details.model_copy(deep=True), question
+                o.status = "needs_clarification" if question else "placed"
+                self._clear_proposal(o)
+            return "Customer confirmed standard pickup details: " + describe(details, b) + (" · Replaces the pending proposal." if replaced_proposal else "")
         return self._change(order_id, version, "customer", "details_completed", mutate, now)
 
     @staticmethod
