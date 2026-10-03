@@ -23,6 +23,13 @@
 .mini-avatar { width:34px; height:34px; border-radius:11px; background:#ece8ff; color:#6752e8; display:grid; place-items:center; font-weight:800; }
 .mini-order b { font-size:13px; color:#302847; }
 .mini-order small { display:block; color:#8b8697; font-size:11px; margin-top:3px; }
+.bakery-welcome { display:flex; align-items:center; gap:20px; padding:22px 26px; margin:10px 0 22px; background:#fffaf4; border:1px solid #efdfd0; border-radius:18px; }
+.bakery-icon { flex:0 0 62px; width:62px; height:62px; display:grid; place-items:center; background:#f6eadc; border-radius:18px; font-size:34px; }
+.bakery-kicker { color:#895b3e; font-size:11px; font-weight:750; text-transform:uppercase; letter-spacing:1.3px; overflow-wrap:anywhere; }
+.bakery-welcome h1 { color:#3c2d29; font-size:clamp(22px,2.2vw,30px); line-height:1.25; font-weight:800; letter-spacing:-.6px; margin:5px 0 7px; padding:0; }
+.bakery-welcome p { color:#756259; font-size:14px; line-height:1.6; margin:0; }
+.bakery-welcome strong { color:#6752e8; font-weight:750; }
+@media(max-width:600px) { .bakery-welcome { align-items:flex-start; gap:12px; padding:18px; } .bakery-icon { flex-basis:44px; width:44px; height:44px; border-radius:14px; font-size:26px; } }
 .badge { display:inline-block; padding:5px 10px; font-size:11px; font-weight:750; border-radius:8px; background:#ede9ff; color:#6d50d4; white-space:nowrap; }
 .badge.green { background:#e2f5ee; color:#25805f; }
 .badge.orange { background:#fff0dc; color:#ac6b11; }
