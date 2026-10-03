@@ -225,8 +225,6 @@ with st.sidebar:
     page = st.radio("Navigation", ["User Interface", "Business Interface", "Order History", "Business Settings"], key="nav", label_visibility="collapsed")
     st.divider()
     st.markdown(f'<div class="sidebar-stat"><b>{len(active)}</b><span>active orders</span></div>', unsafe_allow_html=True)
-    st.caption("Shared demo · customer and business views")
-    st.caption("Groq connected" if api_key else "Groq key not configured")
     if secret("LIVE_AI_ACCESS_CODE"):
         st.text_input("Demo access code", type="password", key="access_code")
     st.caption("All updates appear automatically. Order history stays available after clearing the boards.")
@@ -260,7 +258,7 @@ heartbeat()
 
 
 def user_interface():
-    hero("Your next good order", 'Say it naturally.<br>Follow it <span>clearly.</span>', "Tell us what you would like. Review any suggested changes, follow the business response, and accept pickup when your order is ready.", [("1", "Write your order", "A simple message is enough"), ("2", "Stay in the loop", "Every decision, visible"), ("✓", "Accept pickup", "A clear finish to every order")])
+    st.markdown(f'<section class="bakery-welcome" aria-label="Bakery welcome"><div class="bakery-icon" aria-hidden="true">🍪</div><div><div class="bakery-kicker">{esc(business.name)} · pickup treats</div><h1>Good things come to those who order dessert.</h1><p>Pick your favorite, enjoy a sweet bite, and <strong>place your order below.</strong></p></div></section>', unsafe_allow_html=True)
     mine = [o for o in active if o.customer_key == customer_key(st.session_state.customer_profile)]
     metrics([("Your active orders", len(mine), "Current requests"), ("Awaiting a decision", sum(o.status in {"placed", "modified"} for o in mine), "Business or customer review"), ("Ready for pickup", sum(o.status == "ready_for_pickup" for o in mine), "Accept pickup below")])
     if "_customer_name" not in st.session_state:
